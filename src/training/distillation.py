@@ -1,15 +1,16 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional
 from pathlib import Path
+from typing import Optional
 
 
 class KnowledgeDistiller:
     """Teacher-Student knowledge distillation for cotton disease diagnosis.
 
     Distills an ensemble of Swin Transformer + ConvNeXt (teacher) into a
-    lightweight MobileNetV4 or ShuffleNetV2 (student) for edge deployment.
+    lightweight student (e.g. MobileNetV3) for edge deployment. Supports
+    multi-task students that additionally predict disease severity.
     """
 
     def __init__(
@@ -19,6 +20,8 @@ class KnowledgeDistiller:
         temperature: float = 4.0,
         alpha: float = 0.7,
         lr: float = 1e-4,
+        weight_decay: float = 1e-4,
+        t_max: int = 50,
         device: str = "cuda",
     ):
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
@@ -26,8 +29,12 @@ class KnowledgeDistiller:
         self.student = student.to(self.device)
         self.temperature = temperature
         self.alpha = alpha
-        self.optimizer = torch.optim.AdamW(self.student.parameters(), lr=lr)
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=50)
+        self.optimizer = torch.optim.AdamW(
+            self.student.parameters(), lr=lr, weight_decay=weight_decay
+        )
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer, T_max=t_max
+        )
 
     def distillation_loss(
         self,
@@ -43,10 +50,19 @@ class KnowledgeDistiller:
         ce_loss = F.cross_entropy(student_logits, labels)
         return self.alpha * kd_loss + (1 - self.alpha) * ce_loss
 
+    def _student_outputs(
+        self, images: torch.Tensor
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        output = self.student(images)
+        if isinstance(output, (tuple, list)):
+            return output[0], output[1] if len(output) > 1 else None
+        return output, None
+
     def train_epoch(self, dataloader, epoch: int) -> dict:
         self.student.train()
         total_loss = 0.0
-        correct = 0
+        disease_correct = 0
+        severity_correct = 0
         total = 0
 
         for batch in dataloader:
@@ -56,28 +72,39 @@ class KnowledgeDistiller:
             with torch.no_grad():
                 teacher_logits = self.teacher(images)
 
-            student_logits = self.student(images)
+            student_logits, severity_logits = self._student_outputs(images)
             loss = self.distillation_loss(student_logits, teacher_logits, labels)
+
+            if severity_logits is not None and "severity" in batch:
+                severity_labels = batch["severity"].to(self.device)
+                loss = loss + 0.5 * F.cross_entropy(severity_logits, severity_labels)
+                severity_correct += (
+                    severity_logits.argmax(1) == severity_labels
+                ).sum().item()
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
             total_loss += loss.item()
-            pred = student_logits.argmax(dim=1)
-            correct += (pred == labels).sum().item()
+            disease_correct += (student_logits.argmax(dim=1) == labels).sum().item()
             total += labels.size(0)
 
         self.scheduler.step()
-        return {
+
+        metrics = {
             "loss": total_loss / len(dataloader),
-            "accuracy": correct / total,
+            "disease_accuracy": disease_correct / total,
         }
+        if severity_correct:
+            metrics["severity_accuracy"] = severity_correct / total
+        return metrics
 
     @torch.no_grad()
     def evaluate(self, dataloader) -> dict:
         self.student.eval()
-        correct = 0
+        disease_correct = 0
+        severity_correct = 0
         total = 0
         total_loss = 0.0
 
@@ -85,22 +112,37 @@ class KnowledgeDistiller:
             images = batch["image"].to(self.device)
             labels = batch["disease"].to(self.device)
 
-            logits = self.student(images)
-            loss = F.cross_entropy(logits, labels)
-
+            student_logits, severity_logits = self._student_outputs(images)
+            loss = F.cross_entropy(student_logits, labels)
             total_loss += loss.item()
-            pred = logits.argmax(dim=1)
-            correct += (pred == labels).sum().item()
+            disease_correct += (student_logits.argmax(dim=1) == labels).sum().item()
+
+            if severity_logits is not None and "severity" in batch:
+                severity_labels = batch["severity"].to(self.device)
+                loss = loss + 0.5 * F.cross_entropy(severity_logits, severity_labels)
+                severity_correct += (
+                    severity_logits.argmax(1) == severity_labels
+                ).sum().item()
+
             total += labels.size(0)
 
-        return {
+        metrics = {
             "loss": total_loss / len(dataloader),
-            "accuracy": correct / total,
+            "disease_accuracy": disease_correct / total,
         }
+        if severity_correct:
+            metrics["severity_accuracy"] = severity_correct / total
+        return metrics
 
-    def save_student(self, path: str):
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        torch.save(self.student.state_dict(), path)
+    def save_student(self, path: str, epoch: Optional[int] = None, metrics: Optional[dict] = None):
+        if hasattr(self.student, "save_checkpoint"):
+            self.student.save_checkpoint(path, epoch=epoch, metrics=metrics)
+        else:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            torch.save(self.student.state_dict(), path)
 
     def load_student(self, path: str):
-        self.student.load_state_dict(torch.load(path, map_location=self.device))
+        if hasattr(self.student, "load_checkpoint"):
+            self.student.load_checkpoint(path)
+        else:
+            self.student.load_state_dict(torch.load(path, map_location=self.device))

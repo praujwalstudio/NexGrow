@@ -1,108 +1,206 @@
 """Main training entry point for NexGrow cotton disease diagnosis.
 
 Supports teacher-student distillation, domain generalization training,
-and multi-task disease + severity prediction.
+and INT8 quantization for edge deployment. All settings are driven by
+`configs/train.yaml` with CLI overrides.
 """
 
-import sys
 import os
+import sys
+
 import click
 import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.training.dataset import create_dataloaders, apply_adasyn
+from src.models.factory import MultiTaskModel, build_teacher
+from src.training.dataset import create_dataloaders
 from src.training.distillation import KnowledgeDistiller
 from src.training.domain_generalization import DomainGeneralizationTrainer
+from src.utils.config import N_DISEASES, TrainConfig, resolve_device
 from src.utils.quantization import Quantizer
+
+
+def _override(value, default):
+    return value if value is not None else default
+
+
+def _resolve_device(requested: str) -> str:
+    return resolve_device(requested or "auto")
 
 
 @click.group()
 def cli():
     """NexGrow Training CLI."""
-    pass
 
 
 @cli.command()
-@click.option("--train-dir", required=True, help="Path to training data directory.")
-@click.option("--val-dir", required=True, help="Path to validation data directory.")
-@click.option("--epochs", default=50, help="Number of training epochs.")
-@click.option("--batch-size", default=32, help="Batch size.")
-@click.option("--lr", default=1e-4, help="Learning rate.")
+@click.option("--config", default=None, help="Path to config YAML (default: configs/train.yaml).")
+@click.option("--train-dir", default=None, help="Path to training data directory.")
+@click.option("--val-dir", default=None, help="Path to validation data directory.")
+@click.option("--epochs", type=int, default=None, help="Number of training epochs.")
+@click.option("--batch-size", type=int, default=None, help="Batch size.")
+@click.option("--lr", type=float, default=None, help="Learning rate.")
+@click.option("--weight-decay", type=float, default=None, help="Weight decay.")
+@click.option("--temperature", type=float, default=None, help="Distillation temperature.")
+@click.option("--alpha", type=float, default=None, help="KD vs CE weighting.")
 @click.option("--teacher-path", default=None, help="Path to pre-trained teacher weights.")
-@click.option("--student-out", default="models/student_model/student.pth", help="Output path for student model.")
-@click.option("--device", default="cuda", help="Device (cuda or cpu).")
-def distill(train_dir, val_dir, epochs, batch_size, lr, teacher_path, student_out, device):
+@click.option("--student-backbone", default=None, help="Student backbone name.")
+@click.option("--student-out", default=None, help="Output path for student model.")
+@click.option("--resume", default=None, help="Checkpoint to resume training from.")
+@click.option("--device", default=None, help="Device (cuda, cpu, or auto).")
+def distill(
+    config,
+    train_dir,
+    val_dir,
+    epochs,
+    batch_size,
+    lr,
+    weight_decay,
+    temperature,
+    alpha,
+    teacher_path,
+    student_backbone,
+    student_out,
+    resume,
+    device,
+):
     """Run teacher-student knowledge distillation."""
-    click.echo("Initializing knowledge distillation...")
+    cfg = TrainConfig.load(config)
+    device = _resolve_device(_override(device, cfg.training.device))
+    train_dir = _override(train_dir, cfg.data.train_dir)
+    val_dir = _override(val_dir, cfg.data.val_dir)
+    epochs = _override(epochs, cfg.training.epochs)
+    batch_size = _override(batch_size, cfg.training.batch_size)
+    lr = _override(lr, cfg.training.lr)
+    weight_decay = _override(weight_decay, cfg.training.weight_decay)
+    temperature = _override(temperature, cfg.training.temperature)
+    alpha = _override(alpha, cfg.training.alpha)
+    student_backbone = _override(student_backbone, cfg.model.student_backbone)
+    student_out = _override(student_out, cfg.paths.student_out)
 
-    train_loader, val_loader = create_dataloaders(
-        train_dir, val_dir, batch_size=batch_size
+    click.echo(
+        f"Initializing distillation (student={student_backbone}, device={device})..."
     )
 
-    try:
-        from torchvision.models import swin_v2_b, ConvNeXt_Base
-        teacher = swin_v2_b(pretrained=True)
-    except ImportError:
-        click.echo("Warning: Using placeholder teacher model.")
-        teacher = torch.nn.Linear(224 * 224 * 3, 15)
+    train_loader, val_loader = create_dataloaders(
+        train_dir,
+        val_dir,
+        batch_size=batch_size,
+        image_size=cfg.data.image_size,
+        num_workers=0,
+    )
 
-    try:
-        from torchvision.models import mobilenet_v4
-        student = mobilenet_v4(pretrained=True)
-    except ImportError:
-        click.echo("Warning: Using placeholder student model.")
-        student = torch.nn.Linear(224 * 224 * 3, 15)
+    teacher = build_teacher(
+        N_DISEASES,
+        backbone_names=cfg.model.teacher_backbones,
+        pretrained=cfg.model.teacher_pretrained,
+    )
+    student = MultiTaskModel(
+        backbone_name=student_backbone,
+        pretrained=cfg.model.student_pretrained,
+    )
 
     if teacher_path and os.path.exists(teacher_path):
-        teacher.load_state_dict(torch.load(teacher_path, map_location=device))
+        teacher.load_state_dict(torch.load(teacher_path, map_location=device), strict=False)
 
-    distiller = KnowledgeDistiller(teacher, student, lr=lr, device=device)
+    start_epoch = 0
+    if resume and os.path.exists(resume):
+        student.load_checkpoint(resume)
+        start_epoch = int(torch.load(resume, map_location="cpu").get("epoch", 0))
+        click.echo(f"  Resumed from {resume} (epoch {start_epoch})")
+
+    distiller = KnowledgeDistiller(
+        teacher,
+        student,
+        temperature=temperature,
+        alpha=alpha,
+        lr=lr,
+        weight_decay=weight_decay,
+        t_max=epochs,
+        device=device,
+    )
 
     best_acc = 0.0
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         train_metrics = distiller.train_epoch(train_loader, epoch)
         val_metrics = distiller.evaluate(val_loader)
 
         click.echo(
-            f"Epoch {epoch+1}/{epochs} | "
-            f"Train Loss: {train_metrics['loss']:.4f} | "
-            f"Val Acc: {val_metrics['accuracy']:.4f}"
+            f"Epoch {epoch+1}/{epochs} | Train Loss: {train_metrics['loss']:.4f} | "
+            f"Val Disease Acc: {val_metrics['disease_accuracy']:.4f}"
         )
 
-        if val_metrics["accuracy"] > best_acc:
-            best_acc = val_metrics["accuracy"]
-            distiller.save_student(student_out)
+        if val_metrics["disease_accuracy"] > best_acc:
+            best_acc = val_metrics["disease_accuracy"]
+            distiller.save_student(student_out, epoch=epoch + 1, metrics=val_metrics)
             click.echo(f"  -> Saved best model (acc={best_acc:.4f})")
 
-    click.echo(f"Training complete. Best accuracy: {best_acc:.4f}")
+    click.echo(f"Training complete. Best disease accuracy: {best_acc:.4f}")
 
 
 @cli.command()
-@click.option("--train-dir", required=True, help="Path to training data directory.")
-@click.option("--val-dir", required=True, help="Path to validation data directory.")
-@click.option("--epochs", default=50, help="Number of training epochs.")
-@click.option("--batch-size", default=32, help="Batch size.")
-@click.option("--checkpoint", default="models/student_model/dg_checkpoint.pth", help="Checkpoint output path.")
-@click.option("--device", default="cuda", help="Device (cuda or cpu).")
-def dg_train(train_dir, val_dir, epochs, batch_size, checkpoint, device):
-    """Train with Domain Generalization (MixStyle)."""
-    click.echo("Initializing domain generalization training...")
+@click.option("--config", default=None, help="Path to config YAML (default: configs/train.yaml).")
+@click.option("--train-dir", default=None, help="Path to training data directory.")
+@click.option("--val-dir", default=None, help="Path to validation data directory.")
+@click.option("--epochs", type=int, default=None, help="Number of training epochs.")
+@click.option("--batch-size", type=int, default=None, help="Batch size.")
+@click.option("--lr", type=float, default=None, help="Learning rate.")
+@click.option("--weight-decay", type=float, default=None, help="Weight decay.")
+@click.option("--backbone", default=None, help="Backbone name for feature extraction.")
+@click.option("--checkpoint", default=None, help="Checkpoint output path.")
+@click.option("--resume", default=None, help="Checkpoint to resume training from.")
+@click.option("--device", default=None, help="Device (cuda, cpu, or auto).")
+def dg_train(
+    config,
+    train_dir,
+    val_dir,
+    epochs,
+    batch_size,
+    lr,
+    weight_decay,
+    backbone,
+    checkpoint,
+    resume,
+    device,
+):
+    """Train with Domain Generalization (multi-task feature learning)."""
+    cfg = TrainConfig.load(config)
+    device = _resolve_device(_override(device, cfg.training.device))
+    train_dir = _override(train_dir, cfg.data.train_dir)
+    val_dir = _override(val_dir, cfg.data.val_dir)
+    epochs = _override(epochs, cfg.training.epochs)
+    batch_size = _override(batch_size, cfg.training.batch_size)
+    lr = _override(lr, cfg.training.lr)
+    weight_decay = _override(weight_decay, cfg.training.weight_decay)
+    backbone = _override(backbone, cfg.model.student_backbone)
+    checkpoint = _override(checkpoint, cfg.paths.dg_checkpoint)
+
+    click.echo(f"Initializing domain generalization training (backbone={backbone}, device={device})...")
 
     train_loader, val_loader = create_dataloaders(
-        train_dir, val_dir, batch_size=batch_size
+        train_dir,
+        val_dir,
+        batch_size=batch_size,
+        image_size=cfg.data.image_size,
+        num_workers=0,
     )
 
-    try:
-        from torchvision.models import mobilenet_v4
-        model = mobilenet_v4(pretrained=True)
-    except ImportError:
-        model = torch.nn.Linear(224 * 224 * 3, 15)
+    trainer = DomainGeneralizationTrainer(
+        backbone_name=backbone,
+        pretrained=cfg.model.student_pretrained,
+        lr=lr,
+        weight_decay=weight_decay,
+        device=device,
+    )
 
-    trainer = DomainGeneralizationTrainer(model=model, device=device)
+    start_epoch = 0
+    if resume and os.path.exists(resume):
+        start_epoch, _ = trainer.load_checkpoint(resume)
+        click.echo(f"  Resumed from {resume} (epoch {start_epoch})")
 
     best_acc = 0.0
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         train_metrics = trainer.train_epoch(train_loader, epoch)
         val_metrics = trainer.evaluate(val_loader)
 
@@ -115,36 +213,30 @@ def dg_train(train_dir, val_dir, epochs, batch_size, checkpoint, device):
         avg_acc = (val_metrics["disease_accuracy"] + val_metrics["severity_accuracy"]) / 2
         if avg_acc > best_acc:
             best_acc = avg_acc
-            trainer.save_checkpoint(checkpoint, epoch, val_metrics)
+            trainer.save_checkpoint(checkpoint, epoch=epoch + 1, metrics=val_metrics)
             click.echo(f"  -> Saved checkpoint (avg_acc={best_acc:.4f})")
 
     click.echo(f"DG training complete. Best avg accuracy: {best_acc:.4f}")
 
 
 @cli.command()
-@click.option("--model-path", required=True, help="Path to trained PyTorch model.")
+@click.option("--model-path", required=True, help="Path to trained NexGrow checkpoint.")
 @click.option("--output-dir", default="models/quantized", help="Output directory for quantized models.")
 @click.option("--input-size", default=224, help="Input image size.")
 def quantize(model_path, output_dir, input_size):
     """Quantize a trained model to INT8 ONNX for edge deployment."""
     click.echo(f"Loading model from {model_path}...")
 
-    model = torch.load(model_path, map_location="cpu")
-    if isinstance(model, dict) and "model_state_dict" in model:
-        click.echo("Loaded checkpoint, extracting model state dict.")
+    model = MultiTaskModel.from_checkpoint(model_path)
+    model.eval()
 
-    from torchvision.models import mobilenet_v4
-    net = mobilenet_v4(pretrained=False)
-    if isinstance(model, dict) and "model_state_dict" in model:
-        net.load_state_dict(model["model_state_dict"], strict=False)
-
-    quantizer = Quantizer(net, input_shape=(1, 3, input_size, input_size))
+    quantizer = Quantizer(model, input_shape=(1, 3, input_size, input_size))
 
     onnx_path = os.path.join(output_dir, "nexgrow.onnx")
     quantized_path = os.path.join(output_dir, "nexgrow_int8.onnx")
 
     click.echo("Exporting to ONNX...")
-    quantizer.export_onnx(onnx_path)
+    quantizer.export_onnx(onnx_path, output_names=["disease", "severity"])
 
     click.echo("Applying INT8 quantization...")
     quantizer.quantize_onnx(onnx_path, quantized_path)

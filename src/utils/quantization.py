@@ -17,18 +17,26 @@ class Quantizer:
         self.input_shape = input_shape
 
     def export_onnx(
-        self, output_path: str, opset_version: int = 14
+        self,
+        output_path: str,
+        opset_version: int = 14,
+        output_names: Optional[list] = None,
     ) -> str:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         dummy_input = torch.randn(*self.input_shape)
+        output_names = output_names or ["output"]
+        dynamic_axes = {"input": {0: "batch_size"}}
+        for name in output_names:
+            dynamic_axes[name] = {0: "batch_size"}
         torch.onnx.export(
             self.model,
             dummy_input,
             output_path,
             opset_version=opset_version,
             input_names=["input"],
-            output_names=["output"],
-            dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
+            output_names=output_names,
+            dynamic_axes=dynamic_axes,
+            dynamo=False,
         )
         return output_path
 
