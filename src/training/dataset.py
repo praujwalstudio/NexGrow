@@ -68,16 +68,23 @@ class CottonLeafDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
+    def _apply_transform(self, image: np.ndarray) -> torch.Tensor:
+        if self.transform is None:
+            image = transforms.ToTensor()(image)
+            return transforms.Normalize(
+                [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+            )(image)
+        module = type(self.transform).__module__
+        if module.startswith("albumentations"):
+            return self.transform(image=image)["image"]
+        return self.transform(image)
+
     def __getitem__(self, idx: int) -> dict:
         sample = self.samples[idx]
         image = cv2.imread(sample["path"])
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        if self.transform:
-            image = self.transform(image=image)["image"] if hasattr(self.transform, "__call__") else self.transform(image)
-        else:
-            image = transforms.ToTensor()(image)
-            image = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(image)
+        image = self._apply_transform(image)
 
         result = {
             "image": image,
