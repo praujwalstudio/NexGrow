@@ -81,6 +81,8 @@ class GradCAMPlusPlus:
         cam: np.ndarray,
         alpha: float = 0.5,
     ) -> np.ndarray:
+        if image.shape[:2] != cam.shape[:2]:
+            cam = cv2.resize(cam, (image.shape[1], image.shape[0]))
         cam_uint8 = (cam * 255).astype(np.uint8)
         heatmap = cv2.applyColorMap(cam_uint8, cv2.COLORMAP_JET)
         heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
