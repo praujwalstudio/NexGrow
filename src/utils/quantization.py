@@ -12,8 +12,8 @@ class Quantizer:
     to achieve sub-millisecond inference on mobile devices.
     """
 
-    def __init__(self, model: nn.Module, input_shape: tuple = (1, 3, 224, 224)):
-        self.model = model.eval()
+    def __init__(self, model: Optional[nn.Module], input_shape: tuple = (1, 3, 224, 224)):
+        self.model = model.eval() if model is not None else None
         self.input_shape = input_shape
 
     def export_onnx(
