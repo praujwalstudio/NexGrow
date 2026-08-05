@@ -89,9 +89,7 @@ def prepare(input_dir, output_dir, detector, min_confidence, dry_run):
     detector_model = _load_detector(detector)
     isolator = SAMIsolator()
 
-    images = sorted(
-        p for ext in IMAGE_EXTS for p in input_root.rglob(f"*{ext}")
-    )
+    images = sorted(p for ext in IMAGE_EXTS for p in input_root.rglob(f"*{ext}"))
     if not images:
         click.echo("No images found.")
         sys.exit(1)
@@ -130,7 +128,7 @@ def prepare(input_dir, output_dir, detector, min_confidence, dry_run):
         if not dry_run:
             target_dir.mkdir(parents=True, exist_ok=True)
 
-        for i, ((x1, y1, x2, y2), conf) in enumerate(boxes):
+        for i, ((x1, y1, x2, y2), _conf) in enumerate(boxes):
             crop = image[y1:y2, x1:x2]
             if crop.size == 0:
                 continue

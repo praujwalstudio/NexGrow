@@ -9,8 +9,8 @@ architectures that exist in the installed version.
 """
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 import torch
 import torch.nn as nn
@@ -91,9 +91,7 @@ def _replace_last_linear_with_identity(model: nn.Module, classifier: nn.Module) 
         setattr(classifier, last_name, nn.Identity())
 
 
-def build_classifier(
-    backbone_name: str, n_classes: int, pretrained: bool = True
-) -> nn.Module:
+def build_classifier(backbone_name: str, n_classes: int, pretrained: bool = True) -> nn.Module:
     """Backbone with its final classifier resized to `n_classes`."""
     model = _build_backbone(backbone_name, pretrained)
     _reshape_last_linear(_classifier_of(model), n_classes)
@@ -190,8 +188,8 @@ class MultiTaskModel(nn.Module):
     def save_checkpoint(
         self,
         path: str,
-        epoch: Optional[int] = None,
-        metrics: Optional[dict] = None,
+        epoch: int | None = None,
+        metrics: dict | None = None,
         **extra,
     ) -> str:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -216,13 +214,9 @@ class MultiTaskModel(nn.Module):
             checkpoint = torch.load(checkpoint, map_location="cpu")
         self.model.load_state_dict(checkpoint["model_state_dict"], strict=False)
         if "disease_head_state_dict" in checkpoint:
-            self.disease_head.load_state_dict(
-                checkpoint["disease_head_state_dict"], strict=False
-            )
+            self.disease_head.load_state_dict(checkpoint["disease_head_state_dict"], strict=False)
         if "severity_head_state_dict" in checkpoint:
-            self.severity_head.load_state_dict(
-                checkpoint["severity_head_state_dict"], strict=False
-            )
+            self.severity_head.load_state_dict(checkpoint["severity_head_state_dict"], strict=False)
 
     @classmethod
     def from_checkpoint(cls, checkpoint_path: str, map_location: str = "cpu") -> "MultiTaskModel":

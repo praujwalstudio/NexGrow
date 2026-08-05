@@ -1,10 +1,10 @@
+from pathlib import Path
+
 import cv2
 import numpy as np
-from pathlib import Path
-from typing import Optional
 
 try:
-    from segment_anything import SamPredictor, sam_model_registry, build_sam2
+    from segment_anything import SamPredictor, build_sam2, sam_model_registry
 except ImportError:
     SamPredictor = None
     sam_model_registry = None
@@ -66,13 +66,11 @@ class SAMIsolator:
             h, w = image.shape[:2]
             return np.ones((h, w), dtype=np.uint8)
         box_array = np.array(bbox)
-        masks, scores, _ = self.predictor.predict(
-            box=box_array, multimask_output=True
-        )
+        masks, scores, _ = self.predictor.predict(box=box_array, multimask_output=True)
         best_idx = np.argmax(scores)
         return masks[best_idx].astype(np.uint8)
 
-    def isolate(self, image: np.ndarray, bbox: Optional[tuple] = None) -> np.ndarray:
+    def isolate(self, image: np.ndarray, bbox: tuple | None = None) -> np.ndarray:
         self.set_image(image)
         if bbox is not None:
             mask = self.predict_bounding_box(image, bbox)
@@ -82,7 +80,7 @@ class SAMIsolator:
         isolated[mask == 0] = [0, 0, 0]
         return isolated
 
-    def isolate_to_transparent(self, image: np.ndarray, bbox: Optional[tuple] = None) -> np.ndarray:
+    def isolate_to_transparent(self, image: np.ndarray, bbox: tuple | None = None) -> np.ndarray:
         self.set_image(image)
         if bbox is not None:
             mask = self.predict_bounding_box(image, bbox)
@@ -97,8 +95,8 @@ class SAMIsolator:
     def isolate_file(
         self,
         image_path: str,
-        output_path: Optional[str] = None,
-        bbox: Optional[tuple] = None,
+        output_path: str | None = None,
+        bbox: tuple | None = None,
         transparent: bool = False,
     ) -> str:
         image = cv2.imread(image_path)

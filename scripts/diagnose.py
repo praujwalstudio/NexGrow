@@ -9,7 +9,6 @@ import sys
 
 import click
 import cv2
-import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -25,12 +24,16 @@ def _to_rgb(image):
 @click.command()
 @click.option("--image", required=True, help="Path to input image.")
 @click.option("--model-path", required=True, help="Path to trained NexGrow checkpoint.")
-@click.option("--detector", default=None, help="Path to YOLO11 weights (optional; falls back to full image).")
+@click.option(
+    "--detector", default=None, help="Path to YOLO11 weights (optional; falls back to full image)."
+)
 @click.option("--output-dir", default="outputs/", help="Directory for output visualizations.")
 @click.option("--weather", is_flag=True, help="Enable weather-aware treatment advice.")
 @click.option("--lat", default=20.5, help="Latitude for weather data.")
 @click.option("--lon", default=78.9, help="Longitude for weather data.")
-@click.option("--api-key", default=None, help="OpenWeatherMap API key (or OPENWEATHER_API_KEY env).")
+@click.option(
+    "--api-key", default=None, help="OpenWeatherMap API key (or OPENWEATHER_API_KEY env)."
+)
 @click.option("--device", default="auto", help="Device (cuda, cpu, or auto).")
 def diagnose(image, model_path, detector, output_dir, weather, lat, lon, api_key, device):
     """Run full diagnostic pipeline on a cotton leaf image."""
@@ -78,7 +81,6 @@ def diagnose(image, model_path, detector, output_dir, weather, lat, lon, api_key
     if target_layer is not None:
         gradcam = GradCAMPlusPlus(disease_wrapper, target_layer)
 
-    treatments = []
     for i, leaf in enumerate(result.leaves):
         click.echo(f"  --- Leaf {i + 1} ---")
         click.echo(f"    BBox: {leaf.bbox} (det_conf={leaf.det_conf:.2f})")
@@ -98,7 +100,7 @@ def diagnose(image, model_path, detector, output_dir, weather, lat, lon, api_key
                     cam,
                     str(output_path / f"gradcam_heatmap_{i + 1}.jpg"),
                 )
-                click.echo(f"    Heatmap saved.")
+                click.echo("    Heatmap saved.")
             except Exception as exc:
                 click.echo(f"    Grad-CAM failed ({exc}). Skipping.")
 

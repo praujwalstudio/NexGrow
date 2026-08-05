@@ -79,9 +79,7 @@ def distill(
     student_backbone = _override(student_backbone, cfg.model.student_backbone)
     student_out = _override(student_out, cfg.paths.student_out)
 
-    click.echo(
-        f"Initializing distillation (student={student_backbone}, device={device})..."
-    )
+    click.echo(f"Initializing distillation (student={student_backbone}, device={device})...")
 
     train_loader, val_loader = create_dataloaders(
         train_dir,
@@ -127,7 +125,7 @@ def distill(
         val_metrics = distiller.evaluate(val_loader)
 
         click.echo(
-            f"Epoch {epoch+1}/{epochs} | Train Loss: {train_metrics['loss']:.4f} | "
+            f"Epoch {epoch + 1}/{epochs} | Train Loss: {train_metrics['loss']:.4f} | "
             f"Val Disease Acc: {val_metrics['disease_accuracy']:.4f}"
         )
 
@@ -176,7 +174,9 @@ def dg_train(
     backbone = _override(backbone, cfg.model.student_backbone)
     checkpoint = _override(checkpoint, cfg.paths.dg_checkpoint)
 
-    click.echo(f"Initializing domain generalization training (backbone={backbone}, device={device})...")
+    click.echo(
+        f"Initializing domain generalization training (backbone={backbone}, device={device})..."
+    )
 
     train_loader, val_loader = create_dataloaders(
         train_dir,
@@ -201,11 +201,11 @@ def dg_train(
 
     best_acc = 0.0
     for epoch in range(start_epoch, epochs):
-        train_metrics = trainer.train_epoch(train_loader, epoch)
+        trainer.train_epoch(train_loader, epoch)
         val_metrics = trainer.evaluate(val_loader)
 
         click.echo(
-            f"Epoch {epoch+1}/{epochs} | "
+            f"Epoch {epoch + 1}/{epochs} | "
             f"Disease Acc: {val_metrics['disease_accuracy']:.4f} | "
             f"Severity Acc: {val_metrics['severity_accuracy']:.4f}"
         )
@@ -221,7 +221,9 @@ def dg_train(
 
 @cli.command()
 @click.option("--model-path", required=True, help="Path to trained NexGrow checkpoint.")
-@click.option("--output-dir", default="models/quantized", help="Output directory for quantized models.")
+@click.option(
+    "--output-dir", default="models/quantized", help="Output directory for quantized models."
+)
 @click.option("--input-size", default=224, help="Input image size.")
 def quantize(model_path, output_dir, input_size):
     """Quantize a trained model to INT8 ONNX for edge deployment."""

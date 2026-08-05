@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 class MixStyle(nn.Module):
@@ -38,9 +37,7 @@ class MixStyle(nn.Module):
         mean_perm = mean[perm]
         var_perm = var[perm]
 
-        lam = torch.distributions.Beta(self.alpha, self.alpha).sample(
-            (batch_size,)
-        ).to(x.device)
+        lam = torch.distributions.Beta(self.alpha, self.alpha).sample((batch_size,)).to(x.device)
         lam = lam.view(batch_size, 1, 1, 1)
 
         mean_mixed = lam * mean + (1 - lam) * mean_perm

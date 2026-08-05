@@ -1,9 +1,10 @@
+import contextlib
+from pathlib import Path
+
+import cv2
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-import cv2
-from typing import Optional
-from pathlib import Path
 
 
 class GradCAMPlusPlus:
@@ -34,7 +35,7 @@ class GradCAMPlusPlus:
     def generate(
         self,
         input_tensor: torch.Tensor,
-        target_class: Optional[int] = None,
+        target_class: int | None = None,
         device: str = "cuda",
     ) -> tuple[np.ndarray, int]:
         self.model.zero_grad()
@@ -50,9 +51,9 @@ class GradCAMPlusPlus:
         grads = self.gradients[0]
         activations = self.activations[0]
 
-        grads_power_2 = grads ** 2
-        grads_power_3 = grads ** 3
-        activations_power_4 = activations ** 4
+        grads_power_2 = grads**2
+        grads_power_3 = grads**3
+        activations_power_4 = activations**4
 
         a = grads_power_2
         b = 2 * grads_power_3 * activations
@@ -101,7 +102,5 @@ class GradCAMPlusPlus:
         cv2.imwrite(output_path, cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
 
 
-try:
+with contextlib.suppress(ImportError):
     from torch.nn import functional as F
-except ImportError:
-    pass

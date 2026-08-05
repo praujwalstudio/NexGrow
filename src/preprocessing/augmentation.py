@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-from typing import Optional
 
 try:
     import albumentations as A
@@ -25,42 +24,42 @@ class AugmentationPipeline:
     def _build_train_transform(self):
         if A is None:
             return None
-        return A.Compose([
-            A.RandomResizedCrop(
-                size=(self.image_size, self.image_size), scale=(0.8, 1.0)
-            ),
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.3),
-            A.RandomBrightnessContrast(
-                brightness_limit=0.3, contrast_limit=0.3, p=0.5
-            ),
-            A.HueSaturationValue(
-                hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=0.4
-            ),
-            A.GaussianBlur(blur_limit=(3, 5), p=0.2),
-            A.GaussNoise(std_range=(0.02, 0.15), p=0.2),
-            A.CoarseDropout(
-                num_holes_range=(1, 8),
-                hole_height_range=(4, 16),
-                hole_width_range=(4, 16),
-                p=0.2,
-            ),
-            A.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
-            ),
-        ])
+        return A.Compose(
+            [
+                A.RandomResizedCrop(size=(self.image_size, self.image_size), scale=(0.8, 1.0)),
+                A.HorizontalFlip(p=0.5),
+                A.VerticalFlip(p=0.3),
+                A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.5),
+                A.HueSaturationValue(
+                    hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=0.4
+                ),
+                A.GaussianBlur(blur_limit=(3, 5), p=0.2),
+                A.GaussNoise(std_range=(0.02, 0.15), p=0.2),
+                A.CoarseDropout(
+                    num_holes_range=(1, 8),
+                    hole_height_range=(4, 16),
+                    hole_width_range=(4, 16),
+                    p=0.2,
+                ),
+                A.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                ),
+            ]
+        )
 
     def _build_val_transform(self):
         if A is None:
             return None
-        return A.Compose([
-            A.Resize(height=self.image_size, width=self.image_size),
-            A.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
-            ),
-        ])
+        return A.Compose(
+            [
+                A.Resize(height=self.image_size, width=self.image_size),
+                A.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                ),
+            ]
+        )
 
     def apply_weather_simulation(self, image: np.ndarray, weather: str) -> np.ndarray:
         if weather == "overcast":
@@ -101,7 +100,7 @@ class AugmentationPipeline:
         return results
 
     def augment_batch(
-        self, images: list[np.ndarray], weather: Optional[str] = None
+        self, images: list[np.ndarray], weather: str | None = None
     ) -> list[np.ndarray]:
         augmented = []
         for img in images:

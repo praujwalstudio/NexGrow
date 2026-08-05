@@ -8,7 +8,6 @@ import os
 
 import cv2
 import numpy as np
-import pytest
 
 from src.utils.config import DISEASE_CLASSES, SEVERITY_LEVELS
 

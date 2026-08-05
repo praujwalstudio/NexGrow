@@ -1,8 +1,6 @@
 """Tests for NexGrow preprocessing pipeline."""
 
-import pytest
 import numpy as np
-import cv2
 
 
 class TestQualityAssessor:

@@ -6,7 +6,6 @@ classification so CLI, API, and tests all share the same inference path.
 
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -52,7 +51,7 @@ class DiseaseHeadModel(nn.Module):
         return self.model.disease_head(features)
 
 
-def find_target_layer(backbone: nn.Module) -> Optional[nn.Module]:
+def find_target_layer(backbone: nn.Module) -> nn.Module | None:
     """Best-guess last convolutional layer for Grad-CAM heatmaps."""
     if hasattr(backbone, "features"):
         return backbone.features[-1]
@@ -68,7 +67,7 @@ class DiagnosticPipeline:
     def __init__(
         self,
         model_path: str,
-        detector_path: Optional[str] = None,
+        detector_path: str | None = None,
         device: str = "auto",
         image_size: int = 224,
         conf_threshold: float = 0.25,
@@ -81,16 +80,18 @@ class DiagnosticPipeline:
         self.model = MultiTaskModel.from_checkpoint(model_path)
         self.model.eval().to(self.device)
         self.detector = self._load_detector(detector_path)
-        self.transform = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Resize(image_size + 32),
-            transforms.CenterCrop(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-        ])
+        self.transform = transforms.Compose(
+            [
+                transforms.ToPILImage(),
+                transforms.Resize(image_size + 32),
+                transforms.CenterCrop(image_size),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
 
     @staticmethod
-    def _load_detector(path: Optional[str]):
+    def _load_detector(path: str | None):
         try:
             from ultralytics import YOLO
 
@@ -139,20 +140,22 @@ class DiagnosticPipeline:
             except Exception:
                 isolated = crop
             disease_idx, severity_idx, confidence, _ = self.classify(isolated)
-            leaves.append(LeafDiagnosis(
-                bbox=(x1, y1, x2, y2),
-                det_conf=det_conf,
-                disease=DISEASE_CLASSES[disease_idx]
-                if disease_idx < len(DISEASE_CLASSES)
-                else "Unknown",
-                disease_idx=disease_idx,
-                severity=SEVERITY_LEVELS[severity_idx]
-                if severity_idx < len(SEVERITY_LEVELS)
-                else "Unknown",
-                severity_idx=severity_idx,
-                confidence=confidence,
-                isolated_image=isolated,
-            ))
+            leaves.append(
+                LeafDiagnosis(
+                    bbox=(x1, y1, x2, y2),
+                    det_conf=det_conf,
+                    disease=DISEASE_CLASSES[disease_idx]
+                    if disease_idx < len(DISEASE_CLASSES)
+                    else "Unknown",
+                    disease_idx=disease_idx,
+                    severity=SEVERITY_LEVELS[severity_idx]
+                    if severity_idx < len(SEVERITY_LEVELS)
+                    else "Unknown",
+                    severity_idx=severity_idx,
+                    confidence=confidence,
+                    isolated_image=isolated,
+                )
+            )
         return DiagnosisResult(
             passed=quality.passed,
             quality=quality,
