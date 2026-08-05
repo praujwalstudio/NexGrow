@@ -1,42 +1,47 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional
 from pathlib import Path
+
+from src.models.factory import build_feature_extractor
+from src.utils.config import N_DISEASES, N_SEVERITY
 
 
 class DomainGeneralizationTrainer:
-    """Trains a multi-task model with MixStyle domain generalization.
+    """Trains a multi-task model (disease + severity) for domain generalization.
 
-    Applies feature-level domain augmentation during training to maintain
-    accuracy across different cotton varieties, seasons, and camera hardware.
+    Uses a feature extractor (backbone without its classification head) plus
+    separate disease and severity heads, with feature-level domain augmentation
+    to maintain accuracy across cotton varieties, seasons, and camera hardware.
     """
 
     def __init__(
         self,
-        model: nn.Module,
-        n_diseases: int = 15,
-        n_severity: int = 3,
-        mixstyle_layers: Optional[list] = None,
+        backbone_name: str = "mobilenet_v3_large",
+        n_diseases: int = N_DISEASES,
+        n_severity: int = N_SEVERITY,
         lr: float = 1e-4,
+        weight_decay: float = 1e-4,
+        pretrained: bool = True,
         device: str = "cuda",
     ):
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
-        self.model = model.to(self.device)
-        self.disease_head = nn.Linear(model.feature_dim if hasattr(model, "feature_dim") else 1280, n_diseases).to(self.device)
-        self.severity_head = nn.Linear(model.feature_dim if hasattr(model, "feature_dim") else 1280, n_severity).to(self.device)
-        self.mixstyle_layers = mixstyle_layers or []
+        self.model = build_feature_extractor(backbone_name, pretrained=pretrained).to(self.device)
+        self.backbone_name = backbone_name
+        self.n_diseases = n_diseases
+        self.n_severity = n_severity
+        self.disease_head = nn.Linear(self.model.feature_dim, n_diseases).to(self.device)
+        self.severity_head = nn.Linear(self.model.feature_dim, n_severity).to(self.device)
         self.optimizer = torch.optim.AdamW(
-            list(self.model.parameters()) +
-            list(self.disease_head.parameters()) +
-            list(self.severity_head.parameters()),
+            list(self.model.parameters())
+            + list(self.disease_head.parameters())
+            + list(self.severity_head.parameters()),
             lr=lr,
+            weight_decay=weight_decay,
         )
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         features = self.model(x)
-        if isinstance(features, tuple):
-            features = features[0]
         disease_logits = self.disease_head(features)
         severity_logits = self.severity_head(features)
         return disease_logits, severity_logits
@@ -71,7 +76,7 @@ class DomainGeneralizationTrainer:
             total_severity_loss += loss_severity.item()
             disease_correct += (disease_logits.argmax(1) == disease_labels).sum().item()
             severity_correct += (severity_logits.argmax(1) == severity_labels).sum().item()
-            total += labels.size(0)
+            total += disease_labels.size(0)
 
         return {
             "disease_loss": total_disease_loss / len(dataloader),
@@ -98,7 +103,7 @@ class DomainGeneralizationTrainer:
             disease_logits, severity_logits = self.forward(images)
             disease_correct += (disease_logits.argmax(1) == disease_labels).sum().item()
             severity_correct += (severity_logits.argmax(1) == severity_labels).sum().item()
-            total += labels.size(0)
+            total += disease_labels.size(0)
 
         return {
             "disease_accuracy": disease_correct / total,
@@ -108,10 +113,13 @@ class DomainGeneralizationTrainer:
     def save_checkpoint(self, path: str, epoch: int, metrics: dict):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         torch.save({
-            "epoch": epoch,
             "model_state_dict": self.model.state_dict(),
             "disease_head_state_dict": self.disease_head.state_dict(),
             "severity_head_state_dict": self.severity_head.state_dict(),
+            "backbone_name": self.backbone_name,
+            "n_diseases": self.n_diseases,
+            "n_severity": self.n_severity,
+            "epoch": epoch,
             "metrics": metrics,
         }, path)
 
