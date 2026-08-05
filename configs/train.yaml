@@ -1,0 +1,31 @@
+# NexGrow training configuration
+# Single source of truth for data, model, and training hyperparameters.
+# Override any section via the corresponding CLI flags in scripts/train.py.
+
+data:
+  train_dir: data/processed/train
+  val_dir: data/processed/val
+  image_size: 224
+
+model:
+  student_backbone: mobilenet_v3_large
+  teacher_backbones: ["swin_v2_b", "convnext_base"]
+  teacher_pretrained: true
+  student_pretrained: true
+
+training:
+  epochs: 50
+  batch_size: 32
+  lr: 0.0001
+  weight_decay: 0.0001
+  temperature: 4.0
+  alpha: 0.7
+  num_workers: 4
+  seed: 42
+  device: auto
+
+paths:
+  student_out: models/student_model/student.pth
+  dg_checkpoint: models/student_model/dg_checkpoint.pth
+  teacher_path: null
+  quantized_dir: models/quantized
