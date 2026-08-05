@@ -1,9 +1,7 @@
 """End-to-end integration test: synthetic data -> train -> diagnose -> API."""
 
 import cv2
-import numpy as np
-
-from tests.test_training_smoke import _make_leaf_dataset
+from helpers import make_leaf_dataset, make_leaf_image
 
 
 def _train_tiny_dg_model(data_root, checkpoint, epochs=1):
@@ -31,20 +29,13 @@ def _train_tiny_dg_model(data_root, checkpoint, epochs=1):
     return val_metrics
 
 
-def _make_leaf_image(size=224):
-    rng = np.random.default_rng(7)
-    image = rng.integers(0, 255, (size, size, 3), dtype=np.uint8)
-    cv2.rectangle(image, (50, 60), (170, 190), (120, 180, 60), -1)
-    return image
-
-
 def _setup(tmp_path):
-    _make_leaf_dataset(tmp_path / "train", per_class=1)
-    _make_leaf_dataset(tmp_path / "val", per_class=1)
+    make_leaf_dataset(tmp_path / "train", per_class=1)
+    make_leaf_dataset(tmp_path / "val", per_class=1)
     checkpoint = str(tmp_path / "dg.pth")
     val_metrics = _train_tiny_dg_model(tmp_path, checkpoint)
     image_path = str(tmp_path / "leaf.jpg")
-    cv2.imwrite(image_path, _make_leaf_image())
+    cv2.imwrite(image_path, make_leaf_image())
     return checkpoint, image_path, val_metrics
 
 
