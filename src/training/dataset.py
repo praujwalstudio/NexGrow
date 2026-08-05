@@ -7,26 +7,7 @@ import numpy as np
 from collections import Counter
 import cv2
 
-
-DISEASE_CLASSES = [
-    "Bacterial_Blight",
-    "CLCuD",
-    "Alternaria_Leaf_Spot",
-    "Grey_Mildew",
-    "Leaf_Curl",
-    "Leaf_Spot",
-    "Red_Rust",
-    "Target_Spot",
-    "Bacterial_Light",
-    "Healthy",
-    "Fusarium_Wilt",
-    "Verticillium_Wilt",
-    "Anthracnose",
-    "Cercospora_Leaf_Spot",
-    "Root_Rot",
-]
-
-SEVERITY_LEVELS = ["Low", "Moderate", "High"]
+from src.utils.config import DISEASE_CLASSES, N_DISEASES, SEVERITY_LEVELS
 
 
 class CottonLeafDataset(Dataset):
@@ -107,25 +88,39 @@ class CottonLeafDataset(Dataset):
 
 
 def apply_adasyn(dataset: CottonLeafDataset) -> CottonLeafDataset:
-    """Apply ADASYN oversampling to balance disease class distribution."""
-    from imblearn.over_sampling import ADASYN
+    """Apply ADASYN oversampling to balance disease class distribution.
+
+    Falls back to random oversampling when a class is too small for ADASYN's
+    k-neighbor sampling, and returns the dataset unchanged when it cannot
+    oversample safely (empty or single-class data).
+    """
+    from imblearn.over_sampling import ADASYN, RandomOverSampler
+
+    if len(dataset.samples) == 0:
+        return dataset
 
     labels = [s["disease_idx"] for s in dataset.samples]
-    X_dummy = np.zeros((len(labels), 1))
+    if len(set(labels)) < 2:
+        return dataset
 
-    adasyn = ADASYN(random_state=42)
-    X_res, y_res = adasyn.fit_resample(X_dummy, labels)
+    X_dummy = np.zeros((len(labels), 1))
+    label_to_samples = {}
+    for s in dataset.samples:
+        label_to_samples.setdefault(s["disease_idx"], []).append(s)
+
+    try:
+        _, y_res = ADASYN(random_state=42).fit_resample(X_dummy, labels)
+    except Exception:
+        _, y_res = RandomOverSampler(random_state=42).fit_resample(X_dummy, labels)
 
     resampled = []
-    label_to_paths = {}
-    for s in dataset.samples:
-        label_to_paths.setdefault(s["disease_idx"], []).append(s)
-
     for y in y_res:
-        candidates = label_to_paths.get(y, [])
+        candidates = label_to_samples.get(y, [])
         if candidates:
             resampled.append(np.random.choice(candidates))
 
+    if len(resampled) < len(dataset.samples):
+        return dataset
     dataset.samples = resampled
     return dataset
 
@@ -157,13 +152,15 @@ def create_dataloaders(
     train_dataset = CottonLeafDataset(train_dir, transform=train_transform)
     val_dataset = CottonLeafDataset(val_dir, transform=val_transform)
 
+    pin_memory = torch.cuda.is_available()
+
     train_loader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True,
-        num_workers=num_workers, pin_memory=True,
+        num_workers=num_workers, pin_memory=pin_memory,
     )
     val_loader = DataLoader(
         val_dataset, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=True,
+        num_workers=num_workers, pin_memory=pin_memory,
     )
 
     return train_loader, val_loader
