@@ -4,7 +4,7 @@
 
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-blue)
 ![PyTorch 2.0](https://img.shields.io/badge/PyTorch-2.0-EE4C2C)
-![Flutter](https://img.shields.io/badge/Flutter-Mobile-02569B)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![SAM 2](https://img.shields.io/badge/SAM-2-green)
 ![License: Internal](https://img.shields.io/badge/License-Internal-red)
 
@@ -59,20 +59,28 @@ NexGrow operates on a **Teacher-Student Knowledge Distillation** architecture:
 - PyTorch 2.0.1+
 - Ultralytics YOLO11 (Detection)
 - Segment Anything (SAM/SAM2)
-- Flutter (Mobile UI Framework)
+- FastAPI & Uvicorn (Backend API Gateway)
 
-### Local Setup
+### Local Setup & Usage
 
 ```bash
 # Clone the repository
 git clone https://github.com/praujwalstudio/NexGrow.git
 cd NexGrow
 
-# Install diagnostic core
+# Install diagnostic core and backend dependencies
 pip install -r requirements.txt
 
-# Download pre-trained teacher weights
-python scripts/download_weights.py --model teacher_ensemble
+# Start the high-performance FastAPI Server
+# Set environment variables (optional: OPENWEATHER_API_KEY)
+$env:NEXGROW_MODEL="models/student_model/dg_checkpoint.pth"
+uvicorn server.main:app --reload
+
+# Run End-to-End Inference CLI
+python scripts/diagnose.py --image data/raw/leaf.jpg --model-path models/student_model/dg_checkpoint.pth --weather
+
+# Run ONNX Latency & Model Size Benchmark CLI
+python scripts/benchmark.py --model-path models/student_model/dg_checkpoint.pth --quantize
 ```
 
 ---
@@ -95,10 +103,10 @@ NexGrow/
 │   ├── training/             # Distillation & Domain Generalization
 │   ├── explainability/       # Grad-CAM++ & LIME implementations
 │   └── utils/                # Domain Generalization (MixStyle) layers
-├── scripts/                  # CLI entry points (train, diagnose, download)
-├── mobile_app/               # Flutter source for Android/iOS
-├── deployments/              # Edge benchmarks (Snapdragon/Pi)
-└── tests/                    # Unit and integration tests
+├── scripts/                  # CLI entry points (train, prepare, diagnose, benchmark)
+├── server/                   # FastAPI high-performance Backend API Gateway & Docker
+├── tests/                    # Unit, smoke, and full-pipeline integration tests
+└── deployments/              # Edge deployment planning & docs
 ```
 
 ---
