@@ -8,7 +8,6 @@ with the on-disk dataset layout under `data/processed/`.
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -71,7 +70,7 @@ class TrainingConfig:
 class PathConfig:
     student_out: str = "models/student_model/student.pth"
     dg_checkpoint: str = "models/student_model/dg_checkpoint.pth"
-    teacher_path: Optional[str] = None
+    teacher_path: str | None = None
     quantized_dir: str = "models/quantized"
 
 
@@ -85,17 +84,19 @@ class TrainConfig:
     paths: PathConfig = field(default_factory=PathConfig)
 
     @classmethod
-    def load(cls, path: Optional[str] = None) -> "TrainConfig":
+    def load(cls, path: str | None = None) -> "TrainConfig":
         config_path = Path(path or DEFAULT_CONFIG_PATH)
         if not config_path.exists():
             return cls()
-        with open(config_path, "r", encoding="utf-8") as handle:
+        with open(config_path, encoding="utf-8") as handle:
             raw = yaml.safe_load(handle) or {}
         return cls(
             data=DataConfig(**raw.get("data", {})),
             model=ModelConfig(
                 student_backbone=raw.get("model", {}).get("student_backbone", "mobilenet_v3_large"),
-                teacher_backbones=tuple(raw.get("model", {}).get("teacher_backbones", ("swin_v2_b", "convnext_base"))),
+                teacher_backbones=tuple(
+                    raw.get("model", {}).get("teacher_backbones", ("swin_v2_b", "convnext_base"))
+                ),
                 teacher_pretrained=raw.get("model", {}).get("teacher_pretrained", True),
                 student_pretrained=raw.get("model", {}).get("student_pretrained", True),
             ),

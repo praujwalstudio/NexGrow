@@ -1,8 +1,8 @@
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pathlib import Path
-from typing import Optional
 
 
 class KnowledgeDistiller:
@@ -32,9 +32,7 @@ class KnowledgeDistiller:
         self.optimizer = torch.optim.AdamW(
             self.student.parameters(), lr=lr, weight_decay=weight_decay
         )
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, T_max=t_max
-        )
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=t_max)
 
     def distillation_loss(
         self,
@@ -45,14 +43,12 @@ class KnowledgeDistiller:
         soft_student = F.log_softmax(student_logits / self.temperature, dim=1)
         soft_teacher = F.softmax(teacher_logits / self.temperature, dim=1)
         kd_loss = F.kl_div(soft_student, soft_teacher, reduction="batchmean")
-        kd_loss = kd_loss * (self.temperature ** 2)
+        kd_loss = kd_loss * (self.temperature**2)
 
         ce_loss = F.cross_entropy(student_logits, labels)
         return self.alpha * kd_loss + (1 - self.alpha) * ce_loss
 
-    def _student_outputs(
-        self, images: torch.Tensor
-    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def _student_outputs(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
         output = self.student(images)
         if isinstance(output, (tuple, list)):
             return output[0], output[1] if len(output) > 1 else None
@@ -78,9 +74,7 @@ class KnowledgeDistiller:
             if severity_logits is not None and "severity" in batch:
                 severity_labels = batch["severity"].to(self.device)
                 loss = loss + 0.5 * F.cross_entropy(severity_logits, severity_labels)
-                severity_correct += (
-                    severity_logits.argmax(1) == severity_labels
-                ).sum().item()
+                severity_correct += (severity_logits.argmax(1) == severity_labels).sum().item()
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -120,9 +114,7 @@ class KnowledgeDistiller:
             if severity_logits is not None and "severity" in batch:
                 severity_labels = batch["severity"].to(self.device)
                 loss = loss + 0.5 * F.cross_entropy(severity_logits, severity_labels)
-                severity_correct += (
-                    severity_logits.argmax(1) == severity_labels
-                ).sum().item()
+                severity_correct += (severity_logits.argmax(1) == severity_labels).sum().item()
 
             total += labels.size(0)
 
@@ -134,7 +126,7 @@ class KnowledgeDistiller:
             metrics["severity_accuracy"] = severity_correct / total
         return metrics
 
-    def save_student(self, path: str, epoch: Optional[int] = None, metrics: Optional[dict] = None):
+    def save_student(self, path: str, epoch: int | None = None, metrics: dict | None = None):
         if hasattr(self.student, "save_checkpoint"):
             self.student.save_checkpoint(path, epoch=epoch, metrics=metrics)
         else:

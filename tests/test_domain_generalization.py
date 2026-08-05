@@ -3,7 +3,6 @@
 import os
 import tempfile
 
-import pytest
 import torch
 from torch.utils.data import DataLoader, Dataset
 

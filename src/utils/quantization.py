@@ -1,8 +1,8 @@
+from pathlib import Path
+
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-from pathlib import Path
-from typing import Optional
 
 
 class Quantizer:
@@ -12,7 +12,7 @@ class Quantizer:
     to achieve sub-millisecond inference on mobile devices.
     """
 
-    def __init__(self, model: Optional[nn.Module], input_shape: tuple = (1, 3, 224, 224)):
+    def __init__(self, model: nn.Module | None, input_shape: tuple = (1, 3, 224, 224)):
         self.model = model.eval() if model is not None else None
         self.input_shape = input_shape
 
@@ -20,7 +20,7 @@ class Quantizer:
         self,
         output_path: str,
         opset_version: int = 14,
-        output_names: Optional[list] = None,
+        output_names: list | None = None,
     ) -> str:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         dummy_input = torch.randn(*self.input_shape)
@@ -43,10 +43,10 @@ class Quantizer:
     def quantize_onnx(
         self,
         onnx_path: str,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         weight_type: str = "QInt8",
     ) -> str:
-        from onnxruntime.quantization import quantize_dynamic, QuantType
+        from onnxruntime.quantization import QuantType, quantize_dynamic
 
         if output_path is None:
             output_path = onnx_path.replace(".onnx", "_int8.onnx")
@@ -63,8 +63,9 @@ class Quantizer:
         return Path(path).stat().st_size / (1024 * 1024)
 
     def benchmark_onnx(self, onnx_path: str, n_runs: int = 100) -> dict:
-        import onnxruntime as ort
         import time
+
+        import onnxruntime as ort
 
         session = ort.InferenceSession(onnx_path)
         input_name = session.get_inputs()[0].name

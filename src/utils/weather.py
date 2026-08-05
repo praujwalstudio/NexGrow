@@ -1,6 +1,6 @@
-import requests
-from typing import Optional
 from dataclasses import dataclass
+
+import requests
 
 
 @dataclass
@@ -46,11 +46,11 @@ class WeatherAdvisor:
         },
     }
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         self.api_key = api_key
         self.base_url = "https://api.openweathermap.org/data/2.5/weather"
 
-    def fetch_weather(self, lat: float, lon: float) -> Optional[WeatherData]:
+    def fetch_weather(self, lat: float, lon: float) -> WeatherData | None:
         if not self.api_key:
             return WeatherData(
                 temperature_c=28.0,
@@ -88,9 +88,7 @@ class WeatherAdvisor:
             return "dry"
         return "default"
 
-    def get_treatment(
-        self, disease: str, weather: Optional[WeatherData] = None
-    ) -> dict:
+    def get_treatment(self, disease: str, weather: WeatherData | None = None) -> dict:
         protocols = self.TREATMENT_PROTOCOLS.get(
             disease, self.TREATMENT_PROTOCOLS.get("healthy", {})
         )

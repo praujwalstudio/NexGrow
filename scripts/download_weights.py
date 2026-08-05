@@ -2,8 +2,9 @@
 
 import os
 import sys
-import click
 from pathlib import Path
+
+import click
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 

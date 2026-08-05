@@ -1,7 +1,8 @@
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pathlib import Path
 
 from src.models.factory import build_feature_extractor
 from src.utils.config import N_DISEASES, N_SEVERITY
@@ -60,7 +61,9 @@ class DomainGeneralizationTrainer:
         for batch in dataloader:
             images = batch["image"].to(self.device)
             disease_labels = batch["disease"].to(self.device)
-            severity_labels = batch.get("severity", torch.zeros_like(disease_labels)).to(self.device)
+            severity_labels = batch.get("severity", torch.zeros_like(disease_labels)).to(
+                self.device
+            )
 
             disease_logits, severity_logits = self.forward(images)
 
@@ -98,7 +101,9 @@ class DomainGeneralizationTrainer:
         for batch in dataloader:
             images = batch["image"].to(self.device)
             disease_labels = batch["disease"].to(self.device)
-            severity_labels = batch.get("severity", torch.zeros_like(disease_labels)).to(self.device)
+            severity_labels = batch.get("severity", torch.zeros_like(disease_labels)).to(
+                self.device
+            )
 
             disease_logits, severity_logits = self.forward(images)
             disease_correct += (disease_logits.argmax(1) == disease_labels).sum().item()
@@ -112,16 +117,19 @@ class DomainGeneralizationTrainer:
 
     def save_checkpoint(self, path: str, epoch: int, metrics: dict):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        torch.save({
-            "model_state_dict": self.model.state_dict(),
-            "disease_head_state_dict": self.disease_head.state_dict(),
-            "severity_head_state_dict": self.severity_head.state_dict(),
-            "backbone_name": self.backbone_name,
-            "n_diseases": self.n_diseases,
-            "n_severity": self.n_severity,
-            "epoch": epoch,
-            "metrics": metrics,
-        }, path)
+        torch.save(
+            {
+                "model_state_dict": self.model.state_dict(),
+                "disease_head_state_dict": self.disease_head.state_dict(),
+                "severity_head_state_dict": self.severity_head.state_dict(),
+                "backbone_name": self.backbone_name,
+                "n_diseases": self.n_diseases,
+                "n_severity": self.n_severity,
+                "epoch": epoch,
+                "metrics": metrics,
+            },
+            path,
+        )
 
     def load_checkpoint(self, path: str):
         checkpoint = torch.load(path, map_location=self.device)

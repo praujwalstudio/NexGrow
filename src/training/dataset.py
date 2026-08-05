@@ -1,13 +1,13 @@
-import torch
-from torch.utils.data import Dataset, DataLoader, Subset
-from torchvision import transforms
-from pathlib import Path
-from typing import Optional
-import numpy as np
 from collections import Counter
-import cv2
+from pathlib import Path
 
-from src.utils.config import DISEASE_CLASSES, N_DISEASES, SEVERITY_LEVELS
+import cv2
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, Dataset
+from torchvision import transforms
+
+from src.utils.config import DISEASE_CLASSES, SEVERITY_LEVELS
 
 
 class CottonLeafDataset(Dataset):
@@ -23,7 +23,7 @@ class CottonLeafDataset(Dataset):
     def __init__(
         self,
         root: str,
-        transform: Optional[transforms.Compose] = None,
+        transform: transforms.Compose | None = None,
         multi_task: bool = True,
     ):
         self.root = Path(root)
@@ -40,11 +40,13 @@ class CottonLeafDataset(Dataset):
                     continue
                 for ext in ("*.png", "*.jpg", "*.jpeg", "*.bmp"):
                     for img_path in disease_dir.rglob(ext):
-                        self.samples.append({
-                            "path": str(img_path),
-                            "disease_idx": disease_idx,
-                            "severity_idx": severity_idx,
-                        })
+                        self.samples.append(
+                            {
+                                "path": str(img_path),
+                                "disease_idx": disease_idx,
+                                "severity_idx": severity_idx,
+                            }
+                        )
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -52,9 +54,7 @@ class CottonLeafDataset(Dataset):
     def _apply_transform(self, image: np.ndarray) -> torch.Tensor:
         if self.transform is None:
             image = transforms.ToTensor()(image)
-            return transforms.Normalize(
-                [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
-            )(image)
+            return transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(image)
         module = type(self.transform).__module__
         if module.startswith("albumentations"):
             return self.transform(image=image)["image"]
@@ -132,22 +132,26 @@ def create_dataloaders(
     image_size: int = 224,
     num_workers: int = 4,
 ) -> tuple[DataLoader, DataLoader]:
-    train_transform = transforms.Compose([
-        transforms.ToPILImage(),
-        transforms.RandomResizedCrop(image_size),
-        transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-    ])
+    train_transform = transforms.Compose(
+        [
+            transforms.ToPILImage(),
+            transforms.RandomResizedCrop(image_size),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ]
+    )
 
-    val_transform = transforms.Compose([
-        transforms.ToPILImage(),
-        transforms.Resize(image_size + 32),
-        transforms.CenterCrop(image_size),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-    ])
+    val_transform = transforms.Compose(
+        [
+            transforms.ToPILImage(),
+            transforms.Resize(image_size + 32),
+            transforms.CenterCrop(image_size),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ]
+    )
 
     train_dataset = CottonLeafDataset(train_dir, transform=train_transform)
     val_dataset = CottonLeafDataset(val_dir, transform=val_transform)
@@ -155,12 +159,18 @@ def create_dataloaders(
     pin_memory = torch.cuda.is_available()
 
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True,
-        num_workers=num_workers, pin_memory=pin_memory,
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=pin_memory,
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
     )
 
     return train_loader, val_loader

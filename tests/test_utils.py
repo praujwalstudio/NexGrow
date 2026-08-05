@@ -1,7 +1,5 @@
 """Tests for NexGrow utility modules."""
 
-import pytest
-import numpy as np
 import torch
 
 
@@ -31,9 +29,12 @@ class TestWeatherAdvisor:
 
         advisor = WeatherAdvisor()
         weather = WeatherData(
-            temperature_c=30.0, humidity_pct=85.0,
-            wind_speed_kmh=10.0, description="rain",
-            rain_mm=5.0, location="test",
+            temperature_c=30.0,
+            humidity_pct=85.0,
+            wind_speed_kmh=10.0,
+            description="rain",
+            rain_mm=5.0,
+            location="test",
         )
         result = advisor.get_treatment("Bacterial_Blight", weather)
         assert "treatment" in result

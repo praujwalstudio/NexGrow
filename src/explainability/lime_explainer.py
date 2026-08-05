@@ -1,7 +1,8 @@
-import numpy as np
-import cv2
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
+
+import cv2
+import numpy as np
 
 try:
     from lime import lime_image
@@ -31,12 +32,13 @@ class LIMEExplainer:
         top_labels: int = 3,
         hide_color: int = 0,
         num_features: int = 10,
-        segmentation_fn: Optional[Callable] = None,
+        segmentation_fn: Callable | None = None,
     ) -> dict:
         if self.explainer is None:
             raise ImportError("lime not installed. Run: pip install lime scikit-image")
 
         if segmentation_fn is None and slic is not None:
+
             def segmentation_fn(img):
                 return slic(img, n_segments=50, compactness=10)
 

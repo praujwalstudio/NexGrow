@@ -12,7 +12,6 @@ Run from the project root:
 """
 
 import os
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -46,17 +45,15 @@ class DiagnosisResponse(BaseModel):
     passed: bool
     quality: dict
     leaves: list[LeafResult]
-    treatment: Optional[dict] = None
+    treatment: dict | None = None
 
 
-def get_pipeline() -> Optional[DiagnosticPipeline]:
+def get_pipeline() -> DiagnosticPipeline | None:
     global _pipeline
     if _pipeline is None:
         if not os.path.exists(MODEL_PATH):
             return None
-        _pipeline = DiagnosticPipeline(
-            model_path=MODEL_PATH, detector_path=DETECTOR_PATH
-        )
+        _pipeline = DiagnosticPipeline(model_path=MODEL_PATH, detector_path=DETECTOR_PATH)
     return _pipeline
 
 
@@ -93,7 +90,7 @@ def models():
 
 @app.post("/diagnose", response_model=DiagnosisResponse)
 async def diagnose(
-    image: UploadFile = File(...),
+    image: UploadFile = File(...),  # noqa: B008 (FastAPI dependency injection)
     weather: bool = Query(False, description="Include weather-aware treatment advice."),
     lat: float = Query(20.5),
     lon: float = Query(78.9),
