@@ -3,6 +3,13 @@
 Provides the single source of truth for class taxonomies and runtime
 settings. The `DISEASE_CLASSES` / `SEVERITY_LEVELS` lists must stay in sync
 with the on-disk dataset layout under `data/processed/`.
+
+BANNED MUTATIONS:
+  - Never reorder DISEASE_CLASSES after training starts; integer indices are
+    baked into every saved .pth checkpoint.
+  - Bacterial_Light is currently commented out (no public dataset coverage).
+    To restore it: uncomment the entry, set it back at index 8, and retrain
+    ALL stages from scratch (checkpoints are not forward-compatible).
 """
 
 import os
@@ -14,23 +21,27 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "configs" / "train.yaml"
 
+# fmt: off
 DISEASE_CLASSES = [
-    "Bacterial_Blight",
-    "CLCuD",
-    "Alternaria_Leaf_Spot",
-    "Grey_Mildew",
-    "Leaf_Curl",
-    "Leaf_Spot",
-    "Red_Rust",
-    "Target_Spot",
-    "Bacterial_Light",
-    "Healthy",
-    "Fusarium_Wilt",
-    "Verticillium_Wilt",
-    "Anthracnose",
-    "Cercospora_Leaf_Spot",
-    "Root_Rot",
+    "Bacterial_Blight",      # 0
+    "CLCuD",                 # 1  — distinct from Leaf_Curl
+    "Alternaria_Leaf_Spot",  # 2
+    "Grey_Mildew",           # 3
+    "Leaf_Curl",             # 4  — distinct from CLCuD
+    "Leaf_Spot",             # 5  — distinct from Alternaria & Cercospora
+    "Red_Rust",              # 6
+    "Target_Spot",           # 7
+    # "Bacterial_Light",     # 8  — NO PUBLIC DATA YET. Collect images first.
+    #                              Restoration: uncomment, add back at index 8,
+    #                              shift Healthy→9 ... Root_Rot→14, retrain ALL.
+    "Healthy",               # 8  (was 9 — shifted after Bacterial_Light removed)
+    "Fusarium_Wilt",         # 9  (was 10)
+    "Verticillium_Wilt",     # 10 (was 11)
+    "Anthracnose",           # 11 (was 12)
+    "Cercospora_Leaf_Spot",  # 12 (was 13)
+    "Root_Rot",              # 13 (was 14)
 ]
+# fmt: on
 
 SEVERITY_LEVELS = ["Low", "Moderate", "High"]
 
