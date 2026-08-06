@@ -1,31 +1,49 @@
 # NexGrow training configuration
 # Single source of truth for data, model, and training hyperparameters.
 # Override any section via the corresponding CLI flags in scripts/train.py.
+#
+# NOTE: Time-limit and early-stopping are CLI flags, NOT YAML keys.
+#   Use: python scripts/train_pipeline.py --max-hours 168 --patience 15
+#
+# NOTE: DISEASE_CLASSES and SEVERITY_LEVELS live in src/utils/config.py.
+#   Do NOT duplicate or redefine them here.
 
 data:
+  # Paths to SAM-isolated, folder-structured training and validation images.
+  # Layout must be: <disease>/<severity>/*.jpg  (see dataset_mapper.py)
   train_dir: data/processed/train
   val_dir: data/processed/val
   image_size: 224
 
 model:
+  # Student backbone (lightweight, for edge deployment after distillation)
   student_backbone: mobilenet_v3_large
+  # Teacher ensemble (heavy; trains first, then distils into student)
   teacher_backbones: ["swin_v2_b", "convnext_base"]
   teacher_pretrained: true
   student_pretrained: true
 
 training:
-  epochs: 50
+  # Epochs per stage — 300 gives headroom for the 168-hour safety gate
+  # and early stopping (--patience 15) to terminate before overfitting.
+  epochs: 300
+  # Reduce to 16 if GPU VRAM < 8 GB; increase to 64 if >= 16 GB.
   batch_size: 32
+  # Key MUST be "lr" — the TrainConfig parser does NOT recognise "learning_rate"
   lr: 0.0001
   weight_decay: 0.0001
+  # Distillation temperature: higher = softer teacher logits
   temperature: 4.0
+  # alpha: weight of KD loss vs CE loss  (0.7 = 70% KD, 30% CE)
   alpha: 0.7
-  num_workers: 4
+  # Set num_workers: 0 on Windows if DataLoader hangs at startup
+  num_workers: 0
   seed: 42
   device: auto
 
 paths:
   student_out: models/student_model/student.pth
   dg_checkpoint: models/student_model/dg_checkpoint.pth
-  teacher_path: null
+  # Set teacher_path once the teacher is trained (stage 3 output)
+  teacher_path: models/teacher_ensemble/teacher.pth
   quantized_dir: models/quantized
