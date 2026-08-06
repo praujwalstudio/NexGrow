@@ -1,18 +1,21 @@
 """Tests for the domain generalization trainer."""
 
 import os
+import sys
 import tempfile
 
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from src.utils.config import N_DISEASES
 
 class _SyntheticDataset(Dataset):
     def __init__(self, n: int = 16, image_size: int = 64):
         self.samples = [
             {
                 "image": torch.randn(3, image_size, image_size),
-                "disease": torch.tensor(i % 15, dtype=torch.long),
+                "disease": torch.tensor(i % N_DISEASES, dtype=torch.long),
                 "severity": torch.tensor(i % 3, dtype=torch.long),
             }
             for i in range(n)
@@ -81,5 +84,5 @@ class TestDomainGeneralizationTrainer:
         model.eval()
         x = torch.randn(2, 3, 64, 64)
         disease_logits, severity_logits = model(x)
-        assert disease_logits.shape == (2, 15)
+        assert disease_logits.shape == (2, N_DISEASES)  # 14 until Bacterial_Light data is collected
         assert severity_logits.shape == (2, 3)

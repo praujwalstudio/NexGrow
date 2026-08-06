@@ -88,14 +88,16 @@ EOF
 ```python
 python - <<'EOF'
 from src.utils.config import DISEASE_CLASSES, SEVERITY_LEVELS, TrainConfig, resolve_device
-assert len(DISEASE_CLASSES) == 15, f"Expected 15, got {len(DISEASE_CLASSES)}"
+# Bacterial_Light is temporarily commented out (no public data).
+# N_DISEASES auto-adjusts. Re-run after restoring it to validate 15.
+assert len(DISEASE_CLASSES) == 14, f"Expected 14 (Bacterial_Light deferred), got {len(DISEASE_CLASSES)}"
 assert DISEASE_CLASSES[-1] == "Root_Rot"
 assert SEVERITY_LEVELS == ["Low", "Moderate", "High"]
 cfg = TrainConfig.load()
 assert hasattr(cfg, "data") and hasattr(cfg, "model")
 dev = resolve_device("auto")
 assert dev in ("cuda", "cpu"), f"Unexpected device: {dev}"
-print(f"PASS: DISEASE_CLASSES=15, SEVERITY_LEVELS=3, resolve_device={dev!r}")
+print(f"PASS: DISEASE_CLASSES={len(DISEASE_CLASSES)}, SEVERITY_LEVELS=3, resolve_device={dev!r}")
 EOF
 ```
 

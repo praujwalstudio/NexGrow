@@ -3,6 +3,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from src.utils.config import DISEASE_CLASSES
+
 from server.main import app
 
 client = TestClient(app)
@@ -31,7 +35,7 @@ def test_models_endpoint_lists_taxonomy():
     resp = client.get("/models")
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["diseases"]) == 15
+    assert len(body["diseases"]) == len(DISEASE_CLASSES)  # 14 until Bacterial_Light data is collected
     assert body["severity_levels"] == ["Low", "Moderate", "High"]
 
 
