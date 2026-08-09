@@ -11,8 +11,8 @@
 data:
   # Paths to SAM-isolated, folder-structured training and validation images.
   # Layout must be: <disease>/<severity>/*.jpg  (see dataset_mapper.py)
-  train_dir: data/processed/train
-  val_dir: data/processed/val
+  train_dir: data/processed
+  val_dir: data/processed
   image_size: 224
 
 model:
