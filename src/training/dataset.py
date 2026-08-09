@@ -153,8 +153,32 @@ def create_dataloaders(
         ]
     )
 
-    train_dataset = CottonLeafDataset(train_dir, transform=train_transform)
-    val_dataset = CottonLeafDataset(val_dir, transform=val_transform)
+    train_path = Path(train_dir)
+    val_path = Path(val_dir)
+
+    # Auto fallback to data/processed if train_path doesn't exist but data/processed does
+    if not train_path.exists() and Path("data/processed").exists():
+        train_path = Path("data/processed")
+
+    if train_path == val_path or not val_path.exists():
+        full_dataset = CottonLeafDataset(train_path)
+        val_size = int(0.2 * len(full_dataset))
+        train_size = len(full_dataset) - val_size
+        if train_size > 0 and val_size > 0:
+            train_sub, val_sub = torch.utils.data.random_split(
+                full_dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42)
+            )
+            # Wrap with transforms
+            train_dataset = CottonLeafDataset(train_path, transform=train_transform)
+            train_dataset.samples = [full_dataset.samples[i] for i in train_sub.indices]
+            val_dataset = CottonLeafDataset(train_path, transform=val_transform)
+            val_dataset.samples = [full_dataset.samples[i] for i in val_sub.indices]
+        else:
+            train_dataset = CottonLeafDataset(train_path, transform=train_transform)
+            val_dataset = CottonLeafDataset(train_path, transform=val_transform)
+    else:
+        train_dataset = CottonLeafDataset(train_path, transform=train_transform)
+        val_dataset = CottonLeafDataset(val_path, transform=val_transform)
 
     pin_memory = torch.cuda.is_available()
 
