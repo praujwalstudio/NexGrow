@@ -145,6 +145,119 @@ def distill(
 @click.option("--batch-size", type=int, default=None, help="Batch size.")
 @click.option("--lr", type=float, default=None, help="Learning rate.")
 @click.option("--weight-decay", type=float, default=None, help="Weight decay.")
+@click.option("--checkpoint", default="models/teacher_ensemble/teacher_best.pth", help="Checkpoint output path.")
+@click.option("--resume", default=None, help="Checkpoint to resume training from.")
+@click.option("--device", default=None, help="Device (cuda, cpu, or auto).")
+def teacher_train(
+    config,
+    train_dir,
+    val_dir,
+    epochs,
+    batch_size,
+    lr,
+    weight_decay,
+    checkpoint,
+    resume,
+    device,
+):
+    """Train Swin + ConvNeXt Teacher Ensemble individually."""
+    cfg = TrainConfig.load(config)
+    device = _resolve_device(_override(device, cfg.training.device))
+    train_dir = _override(train_dir, cfg.data.train_dir)
+    val_dir = _override(val_dir, cfg.data.val_dir)
+    epochs = _override(epochs, cfg.training.epochs)
+    batch_size = _override(batch_size, cfg.training.batch_size)
+    lr = _override(lr, cfg.training.lr)
+    weight_decay = _override(weight_decay, cfg.training.weight_decay)
+
+    click.echo(f"Initializing Teacher Ensemble training (backbones={cfg.model.teacher_backbones}, device={device})...")
+
+    train_loader, val_loader = create_dataloaders(
+        train_dir,
+        val_dir,
+        batch_size=batch_size,
+        image_size=cfg.data.image_size,
+        num_workers=0,
+    )
+
+    teacher = build_teacher(
+        N_DISEASES,
+        backbone_names=cfg.model.teacher_backbones,
+        pretrained=cfg.model.teacher_pretrained,
+    ).to(device)
+
+    optimizer = torch.optim.AdamW(teacher.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+
+    start_epoch = 0
+    if resume and os.path.exists(resume):
+        ckpt = torch.load(resume, map_location=device)
+        teacher.load_state_dict(ckpt.get("model", ckpt))
+        start_epoch = int(ckpt.get("epoch", 0))
+        click.echo(f"  Resumed teacher from {resume} (epoch {start_epoch})")
+
+    best_acc = 0.0
+    for epoch in range(start_epoch, epochs):
+        teacher.train()
+        train_loss = 0.0
+        d_correct = total = 0
+
+        for batch in train_loader:
+            imgs = batch["image"].to(device)
+            d_labels = batch["disease"].to(device)
+            s_labels = batch.get("severity", torch.zeros_like(d_labels)).to(device)
+
+            d_logits, s_logits = teacher(imgs)
+            loss = torch.nn.functional.cross_entropy(d_logits, d_labels) + 0.5 * torch.nn.functional.cross_entropy(s_logits, s_labels)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            train_loss += loss.item()
+            d_correct += (d_logits.argmax(1) == d_labels).sum().item()
+            total += d_labels.size(0)
+
+        scheduler.step()
+        train_acc = d_correct / max(total, 1)
+
+        # Validation
+        teacher.eval()
+        val_correct = val_total = 0
+        with torch.no_grad():
+            for batch in val_loader:
+                imgs = batch["image"].to(device)
+                d_labels = batch["disease"].to(device)
+                d_logits, _ = teacher(imgs)
+                val_correct += (d_logits.argmax(1) == d_labels).sum().item()
+                val_total += d_labels.size(0)
+
+        val_acc = val_correct / max(val_total, 1)
+
+        click.echo(
+            f"Epoch {epoch + 1}/{epochs} | "
+            f"Train Loss: {train_loss / len(train_loader):.4f} | "
+            f"Train Acc: {train_acc:.4f} | "
+            f"Val Acc: {val_acc:.4f}"
+        )
+
+        if val_acc > best_acc:
+            best_acc = val_acc
+            os.makedirs(os.path.dirname(checkpoint), exist_ok=True)
+            torch.save({"model": teacher.state_dict(), "epoch": epoch + 1, "best_acc": best_acc}, checkpoint)
+            click.echo(f"  -> Saved best teacher (val_acc={best_acc:.4f})")
+
+    click.echo(f"Teacher training complete. Best accuracy: {best_acc:.4f}")
+
+
+@cli.command()
+@click.option("--config", default=None, help="Path to config YAML (default: configs/train.yaml).")
+@click.option("--train-dir", default=None, help="Path to training data directory.")
+@click.option("--val-dir", default=None, help="Path to validation data directory.")
+@click.option("--epochs", type=int, default=None, help="Number of training epochs.")
+@click.option("--batch-size", type=int, default=None, help="Batch size.")
+@click.option("--lr", type=float, default=None, help="Learning rate.")
+@click.option("--weight-decay", type=float, default=None, help="Weight decay.")
 @click.option("--backbone", default=None, help="Backbone name for feature extraction.")
 @click.option("--checkpoint", default=None, help="Checkpoint output path.")
 @click.option("--resume", default=None, help="Checkpoint to resume training from.")
