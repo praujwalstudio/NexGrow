@@ -71,13 +71,19 @@ cd NexGrow
 # Install diagnostic core and backend dependencies
 pip install -r requirements.txt
 
+# Download & map 30,000+ raw cotton disease images
+python scripts/download_datasets.py --dataset all --auto-map
+
+# Filter quality & isolate backgrounds into data/processed
+python scripts/prepare_data.py --input data/raw --output data/processed
+
 # Start the high-performance FastAPI Server
 # Set environment variables (optional: OPENWEATHER_API_KEY)
 $env:NEXGROW_MODEL="models/student_model/dg_checkpoint.pth"
 uvicorn server.main:app --reload
 
 # Run End-to-End Inference CLI
-python scripts/diagnose.py --image data/raw/leaf.jpg --model-path models/student_model/dg_checkpoint.pth --weather
+python scripts/diagnose.py --image data/raw/Healthy/Low/sample.jpg --model-path models/student_model/dg_checkpoint.pth --weather
 
 # Run ONNX Latency & Model Size Benchmark CLI
 python scripts/benchmark.py --model-path models/student_model/dg_checkpoint.pth --quantize

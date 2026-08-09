@@ -62,12 +62,6 @@ def download(model, output_dir):
         click.echo(f"  Size: {info['size']}")
         click.echo(f"  Target: {target_dir}")
 
-        readme_path = os.path.join(target_dir, "README.md")
-        with open(readme_path, "w") as f:
-            f.write(f"# {model_name}\n\n")
-            f.write(f"{info['description']}\n\n")
-            f.write("Download weights from the model registry or training output.\n")
-
         click.echo(f"  Directory prepared: {target_dir}")
 
     click.echo("\nSetup complete.")

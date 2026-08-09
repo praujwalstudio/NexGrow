@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from src.utils.config import N_DISEASES
 
+
 class _SyntheticDataset(Dataset):
     def __init__(self, n: int = 16, image_size: int = 64):
         self.samples = [

@@ -150,7 +150,7 @@ def prepare(input_dir, output_dir, detector, min_confidence, dry_run):
     click.echo(f"  Leaves detected:     {stats['leaves']}")
     click.echo(f"  Leaves isolated:     {stats['isolated']}")
     if dry_run:
-        click.echo("(dry run — nothing written)")
+        click.echo("(dry run - nothing written)")
     else:
         click.echo(f"Output written to {output_root}")
 

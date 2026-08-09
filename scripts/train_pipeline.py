@@ -59,7 +59,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from src.models.factory import MultiTaskModel, build_teacher
 from src.training.dataset import create_dataloaders
 from src.training.distillation import KnowledgeDistiller
-from src.training.domain_generalization import DomainGeneralizationTrainer
 from src.utils.config import N_DISEASES, N_SEVERITY, TrainConfig, resolve_device
 from src.utils.quantization import Quantizer
 
@@ -181,7 +180,7 @@ def _stage_yolo(cfg, device: str) -> dict:
     else:
         try:
             from ultralytics import YOLO
-            model = YOLO(str(yolo_weights))
+            _yolo_model = YOLO(str(yolo_weights))
             metrics = {
                 "stage": "yolo",
                 "status": "LOADED",
@@ -327,8 +326,8 @@ def _stage_teacher(
                 all_s_preds.extend(s_logits.argmax(1).cpu().tolist())
                 val_total += d_labels.size(0)
 
-        val_d_acc = sum(p == l for p, l in zip(all_d_preds, all_d_labels)) / val_total
-        val_s_acc = sum(p == l for p, l in zip(all_s_preds, all_s_labels)) / val_total
+        val_d_acc = sum(p == true_val for p, true_val in zip(all_d_preds, all_d_labels, strict=True)) / val_total
+        val_s_acc = sum(p == true_val for p, true_val in zip(all_s_preds, all_s_labels, strict=True)) / val_total
         val_d_f1 = _macro_f1(all_d_labels, all_d_preds, N_DISEASES)
         val_s_f1 = _macro_f1(all_s_labels, all_s_preds, N_SEVERITY)
         avg_acc = (val_d_acc + val_s_acc) / 2
@@ -526,7 +525,7 @@ def _stage_quantize(cfg) -> dict:
 
     model_path = DG_OUT if DG_OUT.exists() else STUDENT_OUT
     if not model_path.exists():
-        click.echo(f"  ✗ No trained student found. Run stage 4 first.")
+        click.echo("  ✗ No trained student found. Run stage 4 first.")
         return {"stage": "quantize", "status": "SKIPPED", "reason": "Student weights missing"}
 
     QUANTIZED_DIR.mkdir(parents=True, exist_ok=True)
@@ -642,7 +641,7 @@ def _print_dashboard(all_metrics: dict, elapsed: float):
     overall = yolo_recall * sam_ready * classifier_acc
 
     click.echo(f"  ★ OVERALL PIPELINE END-TO-END ACCURACY : {overall:.2%}")
-    click.echo(f"    (YOLO recall × SAM pass-rate × classifier avg-acc)")
+    click.echo("    (YOLO recall × SAM pass-rate × classifier avg-acc)")
     click.echo("─" * 70)
     click.echo(f"  Total wall-clock time: {_fmt_time(elapsed)}")
     click.echo("=" * 70)

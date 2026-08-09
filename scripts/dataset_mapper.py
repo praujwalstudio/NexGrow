@@ -54,6 +54,8 @@ _BUILTIN_ALIASES: dict[str, str] = {
     "bacterial blight": "Bacterial_Blight",
     "bacterialblight": "Bacterial_Blight",
     "bacterial_blight": "Bacterial_Blight",
+    "bacterial blight of cotton": "Bacterial_Blight",
+    "aug_bacterial_blight": "Bacterial_Blight",
     "blight": "Bacterial_Blight",
     # ── CLCuD / Curl Virus ─────────────────────────────────────────────────
     "clcud": "CLCuD",
@@ -71,6 +73,7 @@ _BUILTIN_ALIASES: dict[str, str] = {
     "alternaria leaf spot": "Alternaria_Leaf_Spot",
     "alternaria_leaf_spot": "Alternaria_Leaf_Spot",
     "alternaria spot": "Alternaria_Leaf_Spot",
+    "aug_alternaria_leaf": "Alternaria_Leaf_Spot",
     # ── Grey Mildew / Areolate Mildew ──────────────────────────────────────
     "grey mildew": "Grey_Mildew",
     "grey_mildew": "Grey_Mildew",
@@ -86,6 +89,8 @@ _BUILTIN_ALIASES: dict[str, str] = {
     "red rust": "Red_Rust",
     "red_rust": "Red_Rust",
     "rust": "Red_Rust",
+    "leaf redding": "Red_Rust",
+    "leaf_redding": "Red_Rust",
     # ── Target Spot ────────────────────────────────────────────────────────
     "target spot": "Target_Spot",
     "target_spot": "Target_Spot",
@@ -98,10 +103,14 @@ _BUILTIN_ALIASES: dict[str, str] = {
     "fusarium wilt": "Fusarium_Wilt",
     "fusarium_wilt": "Fusarium_Wilt",
     "fusarium": "Fusarium_Wilt",
+    "fussarium_wilt": "Fusarium_Wilt",
+    "fussarium": "Fusarium_Wilt",
+    "aug_fusarium_wilt": "Fusarium_Wilt",
     # ── Verticillium Wilt ──────────────────────────────────────────────────
     "verticillium wilt": "Verticillium_Wilt",
     "verticillium_wilt": "Verticillium_Wilt",
     "verticillium": "Verticillium_Wilt",
+    "aug_verticillium_wilt": "Verticillium_Wilt",
     # ── Anthracnose ────────────────────────────────────────────────────────
     "anthracnose": "Anthracnose",
     "anthracnose on cotton": "Anthracnose",
@@ -114,10 +123,25 @@ _BUILTIN_ALIASES: dict[str, str] = {
     "root_rot": "Root_Rot",
     # ── Healthy ────────────────────────────────────────────────────────────
     "healthy": "Healthy",
+    "healthy leaf": "Healthy",
+    "healthy_leaf": "Healthy",
+    "aug_healthy_leaf": "Healthy",
     "normal": "Healthy",
     "disease free": "Healthy",
     "disease_free": "Healthy",
     "no disease": "Healthy",
+    "fresh cotton": "Healthy",
+    "fresh_cotton": "Healthy",
+    "fresh cotton leaf": "Healthy",
+    "fresh cotton plant": "Healthy",
+    "fresh_cotton_leaf": "Healthy",
+    "fresh_cotton_plant": "Healthy",
+    "diseased cotton": "Bacterial_Blight",
+    "diseased_cotton": "Bacterial_Blight",
+    "diseased cotton leaf": "Bacterial_Blight",
+    "diseased cotton plant": "Bacterial_Blight",
+    "diseased_cotton_leaf": "Bacterial_Blight",
+    "diseased_cotton_plant": "Bacterial_Blight",
 }
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
@@ -242,7 +266,7 @@ def map_dataset(source, output, mapping, skip_severity, dry_run, do_copy):
 
     click.echo(f"\nFound {len(all_images)} image(s) under: {source_root}")
     click.echo(f"Output root          : {output_root}")
-    click.echo(f"Severity proxy       : {'DISABLED (all → Low)' if skip_severity else 'ENABLED (OpenCV lesion coverage)'}")
+    click.echo(f"Severity proxy       : {'DISABLED (all -> Low)' if skip_severity else 'ENABLED (OpenCV lesion coverage)'}")
     click.echo(f"Mode                 : {'DRY RUN' if dry_run else ('COPY' if do_copy else 'MOVE')}\n")
 
     stats = {
@@ -254,26 +278,23 @@ def map_dataset(source, output, mapping, skip_severity, dry_run, do_copy):
     skipped_folders: set[str] = set()
 
     for img_path in all_images:
-        # The disease folder is the first meaningful directory under source_root
         parts = img_path.relative_to(source_root).parts
-        if not parts:
-            skipped_folders.add("<root>")
-            stats["skipped"] += 1
-            continue
-
-        raw_disease_folder = parts[0]
-        disease = _resolve_disease(raw_disease_folder, alias_map)
+        # Resolve disease by checking directory hierarchy from closest parent upwards
+        disease = None
+        for part in reversed(parts[:-1]):
+            resolved = _resolve_disease(part, alias_map)
+            if resolved is not None:
+                disease = resolved
+                break
 
         if disease is None:
-            skipped_folders.add(raw_disease_folder)
+            top_folder = parts[0] if parts else "<root>"
+            skipped_folders.add(top_folder)
             stats["skipped"] += 1
             continue
 
         # Severity
-        if skip_severity:
-            severity = "Low"
-        else:
-            severity = _assign_severity(img_path)
+        severity = "Low" if skip_severity else _assign_severity(img_path)
 
         dest_dir = output_root / disease / severity
         dest_path = dest_dir / img_path.name
@@ -294,7 +315,7 @@ def map_dataset(source, output, mapping, skip_severity, dry_run, do_copy):
             else:
                 shutil.move(str(img_path), str(dest_path))
         else:
-            click.echo(f"  [DRY] {img_path.relative_to(source_root)} → {disease}/{severity}/{img_path.name}")
+            click.echo(f"  [DRY] {img_path.relative_to(source_root)} -> {disease}/{severity}/{img_path.name}")
 
         stats["mapped"] += 1
         stats["severity"][severity] += 1
@@ -310,13 +331,13 @@ def map_dataset(source, output, mapping, skip_severity, dry_run, do_copy):
     if skipped_folders:
         click.echo("\n  SKIPPED folders (unknown disease names):")
         for f in sorted(skipped_folders):
-            click.echo(f"    - '{f}'  ← add to alias map if this is a known disease")
+            click.echo(f"    - '{f}'  <- add to alias map if this is a known disease")
 
     click.echo("\n  Disease class breakdown:")
     for disease in DISEASE_CLASSES:
         count = stats["disease"][disease]
-        bar = "█" * min(count // 10, 40)
-        status = "✓" if count > 0 else "✗ EMPTY"
+        bar = "#" * min(count // 10, 40)
+        status = "[OK]" if count > 0 else "[X EMPTY]"
         click.echo(f"    {disease:<30} {count:>5}  {bar}  {status}")
 
     click.echo("\n  Severity breakdown:")
@@ -326,7 +347,7 @@ def map_dataset(source, output, mapping, skip_severity, dry_run, do_copy):
     # Warn about empty classes
     empty = [d for d in DISEASE_CLASSES if stats["disease"][d] == 0]
     if empty:
-        click.echo(f"\n  ⚠ WARNING: {len(empty)} class(es) have 0 images:")
+        click.echo(f"\n  [WARNING] {len(empty)} class(es) have 0 images:")
         for d in empty:
             click.echo(f"    - {d}")
         click.echo("  These classes will be SKIPPED by the dataset loader.")
