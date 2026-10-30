@@ -13,6 +13,12 @@ import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+
 from src.models.factory import MultiTaskModel, build_teacher
 from src.training.dataset import create_dataloaders
 from src.training.distillation import KnowledgeDistiller
@@ -207,8 +213,11 @@ def teacher_train(
             d_labels = batch["disease"].to(device)
             s_labels = batch.get("severity", torch.zeros_like(d_labels)).to(device)
 
-            d_logits, s_logits = teacher(imgs)
-            loss = torch.nn.functional.cross_entropy(d_logits, d_labels) + 0.5 * torch.nn.functional.cross_entropy(s_logits, s_labels)
+            out = teacher(imgs)
+            d_logits = out[0] if isinstance(out, (tuple, list)) else out
+            loss = torch.nn.functional.cross_entropy(d_logits, d_labels)
+            if isinstance(out, (tuple, list)) and len(out) > 1 and "severity" in batch:
+                loss = loss + 0.5 * torch.nn.functional.cross_entropy(out[1], s_labels)
 
             optimizer.zero_grad()
             loss.backward()
@@ -228,7 +237,8 @@ def teacher_train(
             for batch in val_loader:
                 imgs = batch["image"].to(device)
                 d_labels = batch["disease"].to(device)
-                d_logits, _ = teacher(imgs)
+                out = teacher(imgs)
+                d_logits = out[0] if isinstance(out, (tuple, list)) else out
                 val_correct += (d_logits.argmax(1) == d_labels).sum().item()
                 val_total += d_labels.size(0)
 

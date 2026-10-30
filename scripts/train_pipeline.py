@@ -56,6 +56,12 @@ from sklearn.metrics import f1_score
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+
 from src.models.factory import MultiTaskModel, build_teacher
 from src.training.dataset import create_dataloaders
 from src.training.distillation import KnowledgeDistiller
@@ -204,6 +210,8 @@ def _stage_sam() -> dict:
     click.echo("─" * 62)
 
     processed_dir = Path("data/processed/train")
+    if not processed_dir.exists() or not any(processed_dir.rglob("*.jpg")):
+        processed_dir = Path("data/processed")
     if not processed_dir.exists():
         click.echo(
             "  ⚠ data/processed/train not found.\n"
@@ -220,7 +228,7 @@ def _stage_sam() -> dict:
             1 for p in processed_dir.rglob("*")
             if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp"}
         )
-        click.echo(f"  ✓ data/processed/train contains {total} isolated leaf image(s).")
+        click.echo(f"  ✓ {processed_dir} contains {total} isolated leaf image(s).")
         metrics = {
             "stage": "sam",
             "status": "READY",
@@ -290,8 +298,13 @@ def _stage_teacher(
             d_labels = batch["disease"].to(device)
             s_labels = batch.get("severity", torch.zeros_like(d_labels)).to(device)
 
-            d_logits, s_logits = teacher(imgs)
-            loss = F.cross_entropy(d_logits, d_labels) + 0.5 * F.cross_entropy(s_logits, s_labels)
+            out = teacher(imgs)
+            d_logits = out[0] if isinstance(out, (tuple, list)) else out
+            loss = F.cross_entropy(d_logits, d_labels)
+            if isinstance(out, (tuple, list)) and len(out) > 1 and "severity" in batch:
+                s_logits = out[1]
+                loss = loss + 0.5 * F.cross_entropy(s_logits, s_labels)
+                s_correct += (s_logits.argmax(1) == s_labels).sum().item()
 
             optimizer.zero_grad()
             loss.backward()
@@ -318,19 +331,24 @@ def _stage_teacher(
                 imgs = batch["image"].to(device)
                 d_labels = batch["disease"].to(device)
                 s_labels = batch.get("severity", torch.zeros_like(d_labels)).to(device)
-                d_logits, s_logits = teacher(imgs)
-                val_loss += (F.cross_entropy(d_logits, d_labels) + 0.5 * F.cross_entropy(s_logits, s_labels)).item()
+                out = teacher(imgs)
+                d_logits = out[0] if isinstance(out, (tuple, list)) else out
+                has_s = isinstance(out, (tuple, list)) and len(out) > 1
+                batch_loss = F.cross_entropy(d_logits, d_labels)
                 all_d_labels.extend(d_labels.cpu().tolist())
                 all_d_preds.extend(d_logits.argmax(1).cpu().tolist())
-                all_s_labels.extend(s_labels.cpu().tolist())
-                all_s_preds.extend(s_logits.argmax(1).cpu().tolist())
+                if has_s:
+                    batch_loss = batch_loss + 0.5 * F.cross_entropy(out[1], s_labels)
+                    all_s_labels.extend(s_labels.cpu().tolist())
+                    all_s_preds.extend(out[1].argmax(1).cpu().tolist())
+                val_loss += batch_loss.item()
                 val_total += d_labels.size(0)
 
-        val_d_acc = sum(p == true_val for p, true_val in zip(all_d_preds, all_d_labels, strict=True)) / val_total
-        val_s_acc = sum(p == true_val for p, true_val in zip(all_s_preds, all_s_labels, strict=True)) / val_total
+        val_d_acc = sum(p == true_val for p, true_val in zip(all_d_preds, all_d_labels, strict=True)) / max(val_total, 1)
+        val_s_acc = sum(p == true_val for p, true_val in zip(all_s_preds, all_s_labels, strict=True)) / max(val_total, 1) if all_s_labels else 0.0
         val_d_f1 = _macro_f1(all_d_labels, all_d_preds, N_DISEASES)
-        val_s_f1 = _macro_f1(all_s_labels, all_s_preds, N_SEVERITY)
-        avg_acc = (val_d_acc + val_s_acc) / 2
+        val_s_f1 = _macro_f1(all_s_labels, all_s_preds, N_SEVERITY) if all_s_labels else 0.0
+        avg_acc = (val_d_acc + val_s_acc) / 2 if all_s_labels else val_d_acc
 
         row = {
             "epoch": epoch + 1,

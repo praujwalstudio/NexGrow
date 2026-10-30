@@ -24,22 +24,14 @@ DEFAULT_CONFIG_PATH = PROJECT_ROOT / "configs" / "train.yaml"
 # fmt: off
 DISEASE_CLASSES = [
     "Bacterial_Blight",      # 0
-    "CLCuD",                 # 1  — distinct from Leaf_Curl
+    "CLCuD",                 # 1  (Cotton Leaf Curl Virus)
     "Alternaria_Leaf_Spot",  # 2
     "Grey_Mildew",           # 3
-    "Leaf_Curl",             # 4  — distinct from CLCuD
-    "Leaf_Spot",             # 5  — distinct from Alternaria & Cercospora
-    "Red_Rust",              # 6
-    "Target_Spot",           # 7
-    # "Bacterial_Light",     # 8  — NO PUBLIC DATA YET. Collect images first.
-    #                              Restoration: uncomment, add back at index 8,
-    #                              shift Healthy→9 ... Root_Rot→14, retrain ALL.
-    "Healthy",               # 8  (was 9 — shifted after Bacterial_Light removed)
-    "Fusarium_Wilt",         # 9  (was 10)
-    "Verticillium_Wilt",     # 10 (was 11)
-    "Anthracnose",           # 11 (was 12)
-    "Cercospora_Leaf_Spot",  # 12 (was 13)
-    "Root_Rot",              # 13 (was 14)
+    "Red_Rust",              # 4
+    "Target_Spot",           # 5
+    "Healthy",               # 6
+    "Fusarium_Wilt",         # 7
+    "Verticillium_Wilt",     # 8
 ]
 # fmt: on
 
